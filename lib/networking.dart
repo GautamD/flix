@@ -3,9 +3,9 @@ import 'package:flix/actor.dart';
 import 'package:flix/movie.dart';
 import 'package:http/http.dart' as http;
 
-final api_key = 'def1092048c27281fdcef233de2b9878';
-final base_url = 'api.themoviedb.org';
-final images_base_url = 'https://image.tmdb.org/t/p/w500';
+const api_key = 'def1092048c27281fdcef233de2b9878';
+const base_url = 'api.themoviedb.org';
+const images_base_url = 'https://image.tmdb.org/t/p/w500';
 
 Future<Map<String, List<Movie>>> fetchHome() async {
   Map<String, List<Movie>> homeData = new Map();
@@ -15,13 +15,17 @@ Future<Map<String, List<Movie>>> fetchHome() async {
   http.Response trendingResponse;
   final client = http.Client();
   try {
-    nowPlayingResponse = await http.get(
-        Uri.https(base_url, '/3/movie/now_playing', {'api_key': api_key}),
-        headers: {"Content-Type": "application/json"});
+    List<http.Response> responses = await Future.wait([
+      http.get(
+          Uri.https(base_url, '/3/movie/now_playing', {'api_key': api_key}),
+          headers: {"Content-Type": "application/json"}),
+      http.get(
+          Uri.https(base_url, '/3/trending/movie/day', {'api_key': api_key}),
+          headers: {"Content-Type": "application/json"})
+    ]);
 
-    trendingResponse = await http.get(
-        Uri.https(base_url, '/3/trending/movie/day', {'api_key': api_key}),
-        headers: {"Content-Type": "application/json"});
+    nowPlayingResponse = responses.first;
+    trendingResponse = responses.last;
 
     if (nowPlayingResponse.statusCode != 200 ||
         trendingResponse.statusCode != 200) {
@@ -49,25 +53,30 @@ Future<Movie> fetchMovieDetail(String movieId) async {
 
   final client = http.Client();
   try {
-    movieResponse = await http.get(
-        Uri.https(base_url, '/3/movie/$movieId', {'api_key': api_key}),
-        headers: {"Content-Type": "application/json"});
+    List<http.Response> responses = await Future.wait([
+      http.get(Uri.https(base_url, '/3/movie/$movieId', {'api_key': api_key}),
+          headers: {"Content-Type": "application/json"}),
+      http.get(
+          Uri.https(
+              base_url, '/3/movie/$movieId/credits', {'api_key': api_key}),
+          headers: {"Content-Type": "application/json"})
+    ]);
 
-    movieCreditsResponse = await http.get(
-        Uri.https(base_url, '/3/movie/$movieId/credits', {'api_key': api_key}),
-        headers: {"Content-Type": "application/json"});
+    movieResponse = responses.first;
+    movieCreditsResponse = responses.last;
 
     if (movieResponse.statusCode != 200 ||
         movieCreditsResponse.statusCode != 200) {
       throw Exception('Failed to load movie');
     }
+
+    movie = parseMovie(jsonDecode(movieResponse.body),
+        jsonDecode(movieCreditsResponse.body)['cast']);
+
+    return movie;
   } finally {
     client.close();
   }
-  movie = parseMovie(jsonDecode(movieResponse.body),
-      jsonDecode(movieCreditsResponse.body)['cast']);
-
-  return movie;
 }
 
 List<Movie> parseMovies(List<dynamic> moviesJson) {
@@ -108,17 +117,18 @@ List<String> fetchTrendingMovieIds(List<dynamic> moviesJson) {
 Future<List<Movie>> fetchTrendingMoviesFromMovieIds(
     List<String> trendingMovieIds) async {
   List<Movie> trendingMovies = [];
-  http.Response trendingMovieResponse;
 
-  await Future.forEach(trendingMovieIds, (movieId) async {
-    trendingMovieResponse = await http.get(
+  List<http.Response> responses =
+      await Future.wait(trendingMovieIds.map((movieId) {
+    return http.get(
         Uri.https(base_url, '/3/movie/$movieId', {'api_key': api_key}),
         headers: {"Content-Type": "application/json"});
+  }));
 
+  responses.forEach((http.Response trendingMovieResponse) {
     Movie movie = parseTrendingMovie(jsonDecode(trendingMovieResponse.body));
     trendingMovies.add(movie);
   });
-
   return trendingMovies;
 }
 
