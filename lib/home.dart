@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flix/movie.dart';
 import 'package:flix/movie_detail.dart';
 import 'package:flix/networking.dart';
 import 'package:flix/rating_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:uni_links/uni_links.dart';
+
+StreamSubscription _sub;
 
 class Home extends StatefulWidget {
   @override
@@ -16,7 +22,14 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
+    initUniLinks(context);
     fetchHome().then((homeData) => setState(() => _homeData = homeData));
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -128,8 +141,23 @@ Widget homeWidget(List<Movie> nowPlayingMovies, List<Movie> trendingMovies) {
 }
 
 void goToMovieDetail(BuildContext context, String movieId) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => MovieDetail(movieId: movieId)),
-  );
+  Navigator.push(context,
+      MaterialPageRoute(builder: (context) => MovieDetail(movieId: movieId)));
+}
+
+Future<Null> initUniLinks(BuildContext context) async {
+  try {
+    final initialLink = await getInitialLink();
+    if (initialLink != null) {
+      String movieId = initialLink.replaceFirst("MOVIES://flix.com/", "");
+      goToMovieDetail(context, movieId);
+    }
+  } on PlatformException {
+    print("ERROR: Processing initial link failed.");
+  }
+
+  _sub = linkStream.listen((String link) {
+    String movieId = link.replaceFirst("MOVIES://flix.com/", "");
+    goToMovieDetail(context, movieId);
+  }, onError: (error) => print("ERROR: ${error.toString()}"));
 }
